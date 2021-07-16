@@ -8,5 +8,15 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+ux = "0.1"
 yew = "0.17"
 wasm-bindgen = "0.2"
+
+[dependencies.web-sys]
+version = "0.3.5"
+features = [
+  'Document',
+  'Element',
+  'HtmlImageElement',
+  'Window',
+]
