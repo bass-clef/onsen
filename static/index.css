@@ -16,6 +16,7 @@ html, body {
   display: grid;
   width: 100%;
   height: 100%;
+  position: relative;
   grid-template-rows: 12.5% 20% 55% 12.5%;
   grid-template-areas:
     "container_item_header"
@@ -36,15 +37,27 @@ html, body {
   margin: 0 auto;
   padding: 10px;
 }
-[data-ruby] {
+[data-back-ruby] {
   position: relative;
 }
-[data-ruby]::before {
-  content: attr(data-ruby);
+[data-back-ruby]::before {
+  content: attr(data-back-ruby);
   position: absolute;
+  top: -1em;
   left: 0;
   right: 0;
+  margin: auto;
+  font-size: 0.25em;
+}
+[data-front-ruby] {
+  position: relative;
+}
+[data-front-ruby]::before {
+  content: attr(data-front-ruby);
+  position: absolute;
   bottom: -1em;
+  left: 0;
+  right: 0;
   margin: auto;
   font-size: 0.25em;
 }
@@ -52,9 +65,14 @@ html, body {
   top: 0;
   font-size: 0.25em;
 }
-#onsen_mark {
+#onsen_mark, #temp_onsen_mark {
   width: 15%;
   height: 15%;
+}
+#temp_onsen_mark {
+  position: absolute;
+  width: 15%;
+  height: auto;
 }
 
 /* -------------------- メインコンテンツ -------------------- */
@@ -74,6 +92,8 @@ html, body {
 #wood_kanban_div {
   display: inline-block;
   position: absolute;
+  width: 40%;
+  height: 40%;
   top: 21%;
 }
 #wood_kanban {
@@ -90,6 +110,7 @@ html, body {
   letter-spacing: normal;
 }
 #wood_kanban_text {
+  width: 75%;
   height: 75%;
   margin: 0 auto;
   padding: 20%;
@@ -107,6 +128,21 @@ html, body {
 #ondokei {
   width: 125%;
   height: 125%;
+}
+#ondokei_text_div {
+  width: 105px;
+  height: 50px;
+  position: absolute;
+  top: 310px;
+  left: 410px;
+  transform: rotate(-10deg);
+  -webkit-transform: rotate(-10deg);
+}
+#ondokei_text {
+  margin: 0;
+  padding: 2px;
+  font-size: 4vw;
+  text-align: right;
 }
 
 /* 温泉マーク */

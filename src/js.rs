@@ -1,6 +1,17 @@
+use futures::{
+    future,
+    Future,
+};
+use js_sys::Promise;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::HtmlImageElement;
+use wasm_bindgen_futures::{
+    JsFuture,
+};
+use web_sys::{
+    HtmlImageElement,
+    Request, RequestInit, RequestMode, Response,
+};
 
 #[wasm_bindgen]
 extern "C" {
@@ -41,5 +52,27 @@ impl DOM {
         image.set_alt( std::path::Path::new(path).file_stem().unwrap().to_str().unwrap() );
 
         image
+    }
+}
+
+pub mod fs {
+    use super::*;
+    
+    #[wasm_bindgen(inline_js = "export function get_sync_request(url) { let xhr = new XMLHttpRequest(); xhr.open('GET', url, false); xhr.responseType = 'text/plain'; xhr.setRequestHeader( 'X-Requested-With', 'XMLHttpRequest' ); xhr.send(); if (xhr.status == 200){ return xhr.responseText;} }")]
+    extern "C" {
+        pub fn get_sync_request(path: &str) -> String;
+    }
+    
+    /// FileIO の wasm 版
+    /// XMLHttpRequest で get リクエストして file を同期でもらってる
+    /// 下記のと同義
+    /// <pre>
+    /// let file = std::fs::File::open( path: &str ).unwrap();
+    /// </pre>
+    pub fn open<'a>(file_path: String) -> stringreader::StringReader<'a> {
+        let data = get_sync_request(&file_path);
+
+        // move を許可してくれない参照系男子 (おそらくプログラム終了時に開放されるので問題ない?)
+        stringreader::StringReader::new( Box::leak(data.into_boxed_str()) )
     }
 }
