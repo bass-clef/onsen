@@ -57,9 +57,13 @@ impl SenOp {
                     2 => format!( "/resource/mark_{}sen.png", self_string ),
                     _ => format!( "/resource/mark_{}sen_0b{:02b}.png", self_string, sen.bit ),
                 }
-            },
-            _ => format!( "/resource/mark_{}sen.png", self ),
+            }.to_lowercase(),
+            _ => format!( "/resource/mark_{}sen.png", self ).to_lowercase(),
         }
+    }
+
+    fn to_string(&self) -> String {
+        format!("{}", *self)
     }
 }
 impl std::fmt::Display for SenOp {
@@ -145,7 +149,7 @@ impl Sen {
 }
 
 /// Sen の本数を扱うクラス
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SenManager {
     sen_list: Vec<Sen>,
 }

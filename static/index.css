@@ -12,11 +12,193 @@ html, body {
   font-family: 'gomarice_mukasi_mukasi';
 }
 
-.container {
+button {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+button img {
+  display: block;
+}
+
+/* -------------------- select page -------------------- */
+.select_container {
   display: grid;
+  position: relative;
   width: 100%;
   height: 100%;
+  grid-template-rows: 25% 60% 15%;
+  grid-template-areas:
+    "container_item_header"
+    "select_container_item_content"
+    "container_item_footer";
+}
+
+#onsen_select_map {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.select_container_item_content {
+  display: grid;
   position: relative;
+  width: 100%;
+  height: 100%;
+  grid-template-rows: 25% 25% 25% 25%;
+  grid-template-columns: 1fr 3fr 3fr 3fr 1fr;
+  grid-template-areas:
+    ". . . stage_3 ."
+    ". stage_2 . . ."
+    ". . . stage_1 ."
+    ". stage_0 . . .";
+  z-index: 1;
+}
+
+/* 各ステージ */
+.select_container_item_content > div {
+  width: 100%;
+  height: 100%;
+}
+.stage_3 {
+  grid-area: stage_3;
+}
+.stage_2 {
+  grid-area: stage_2;
+}
+.stage_1 {
+  grid-area: stage_1;
+}
+.stage_0 {
+  grid-area: stage_0;
+}
+
+.is_clear_onsen_mark {
+  position: relative;
+  width: 100%;
+  height: auto;
+  display: flex;
+}
+
+/* ステージ詳細ポップアップ */
+#stage_detail_div {
+  display: grid;
+  position: absolute;
+  width: 90%;
+  height: 90%;
+  grid-template-rows: 20% 30% 30% 20%;
+  grid-template-areas:
+    "stage_name"
+    "stage_detail"
+    "stage_external_icon"
+    "stage_navigation";
+  z-index: 10;
+  background-color: white;
+  visibility: hidden;
+  opacity: 0;
+  margin: 5%;
+  text-align: center;
+}
+
+.stage_detail_show_popup {
+  animation: show_popup 0.5s ease 1 forwards;
+}
+@keyframes show_popup {
+  0% {
+    transform: translateY(40px) scale(0.8);
+    opacity: 0;
+    visibility: hidden;
+  }
+  100% {
+    transform: translateY(0) scale(1.0);
+    visibility: visible;
+  }
+  80%, 100% {
+    opacity: 0.8;
+  }
+}
+
+.stage_detail_hide_popup {
+  animation: hide_popup 0.25s ease 1 backwards;
+}
+@keyframes hide_popup {
+  0% {
+    transform: translateY(0) scale(1.0);
+    opacity: 0;
+    visibility: hidden;
+  }
+  100% {
+    transform: translateY(40px) scale(0.8);
+    visibility: visible;
+  }
+  20%, 0% {
+    opacity: 0.2;
+  }
+}
+
+/* ポップアップ内容 */
+#stage_name {
+  display: flex;
+  margin: 0 auto;
+  padding: 5% 1em;
+  bottom: 0;
+  justify-content: center;
+  grid-area: stage_name;
+}
+
+#stage_detail {
+  margin: 0 auto;
+  padding: 5% 1em;
+  grid-area: stage_detail;
+}
+
+#stage_external_icon {
+  position: absolute;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  justify-content: space-evenly;
+  grid-area: stage_external_icon;
+  padding: 0 10%;
+}
+#stage_external_icon > button a {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.stage_link_image {
+  display: flex;
+  justify-content: center;
+  width: auto;
+  height: 90%;
+}
+
+#stage_navigation {
+  position: absolute;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  justify-content: space-evenly;
+  grid-area: stage_navigation;
+}
+#stage_navigation > button {
+  display: flex;
+  justify-content: center;
+  width: auto;
+  height: 90%;
+}
+
+
+/* -------------------- top page -------------------- */
+.top_container {
+  display: grid;
+  position: relative;
+  width: 100%;
+  height: 100%;
   grid-template-rows: 12.5% 20% 55% 12.5%;
   grid-template-areas:
     "container_item_header"
@@ -25,7 +207,7 @@ html, body {
     "container_item_footer";
 }
 
-/* -------------------- タイトル -------------------- */
+/* -------------------- top-タイトル -------------------- */
 .container_item_title {
   width: 100%;
   height: 100%;
@@ -75,7 +257,7 @@ html, body {
   height: auto;
 }
 
-/* -------------------- メインコンテンツ -------------------- */
+/* -------------------- top-メインコンテンツ -------------------- */
 .container_item_content {
   position: relative;
   font-size: 0;
@@ -84,7 +266,6 @@ html, body {
   width: 125%;
   height: 125%;
   text-align: center;
-  -webkit-transform : translateX(-10%);
   transform : translateX(-10%);
 }
 
@@ -105,7 +286,6 @@ html, body {
   width: 75%;
   height: 100%;
   top: 50%;
-  -webkit-transform : translateY(-50%);
   transform : translateY(-50%);
   letter-spacing: normal;
 }
@@ -122,6 +302,8 @@ html, body {
 #ondokei_div {
   display: inline-block;
   position: absolute;
+  width: 59%;
+  height: 59%;
   top: 55%;
   left: 40%;
 }
@@ -130,15 +312,16 @@ html, body {
   height: 125%;
 }
 #ondokei_text_div {
-  width: 105px;
-  height: 50px;
   position: absolute;
-  top: 310px;
-  left: 410px;
+  width: 18%;
+  height: 7%;
+  top: 55%;
+  left: 72%;
   transform: rotate(-10deg);
-  -webkit-transform: rotate(-10deg);
 }
 #ondokei_text {
+  width: 100%;
+  height: 100%;
   margin: 0;
   padding: 2px;
   font-size: 4vw;
@@ -152,13 +335,11 @@ html, body {
   width: 75%;
   top: 50%;
   left: 50%;
-  -webkit-transform : translateX(-50%) translateY(-50%);
   transform : translateX(-50%) translateY(-50%);
 }
 #onsen_mark_frame {
   width: 100%;
   height: 100%;
-  -webkit-transform : translateY(10%);
   transform : translateY(10%);
 }
 #onsen_mark_sen {
