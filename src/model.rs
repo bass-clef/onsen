@@ -16,18 +16,20 @@ use crate::sen;
 use crate::js;
 
 /// イベントメッセージ
+#[derive(Clone)]
 pub enum Message {
     // parent message
     ChangeToQuastionPage(String),
     ChangeToSelectPage,
     None,
 
-    // top page
+    // quastion page
     TouchStart(web_sys::TouchEvent),
     TouchMove(web_sys::TouchEvent),
     TouchEnd,
     TouchStartBackSen,
     TouchStartFrontSen,
+    BlinkAnimationEnd,
 
     // select page
     StageSelect(i32),
@@ -81,7 +83,7 @@ impl OnsenName {
             }
             string.push( char_opt.unwrap() );
 
-            js::console_log!("char: {:?}, string: {}, name: {}", char_opt, string, self.name);
+            js::console_log!("i: {}, char: {:?}, string: {}, name: {}", i, char_opt, string, self.name);
             if string == "n" {
                 i += 1;
                 continue;
@@ -151,51 +153,92 @@ impl std::ops::AddAssign<String> for OnsenName {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct OnsenStatus {
     is_clear: bool,
+    is_using_onsen: bool,
+    is_lower_border: bool,
+
+    ops_border: i32,
+
     temperature: i32,
     sen: sen::SenManager,
+    #[serde(default)]
+    ops_count: i32,
+
     info: String,
     onsen_name: OnsenName,
 
-    #[serde(default)]
     key: String,
+    back_key: String,
+    next_key: String,
 }
 impl OnsenStatus {
+    /// インスタンス作成
     fn new(key: &str) -> Self {
-        Self::default().set_key(key)
+        Resource::onsen_status_manager().onsen_status_list[key].clone()
+            .set_temperature(0)
     }
 
-    fn set_key(mut self, key: &str) -> Self {
-        self.key = key.to_string();
+    /// 初期状態にする
+    fn init(&mut self) {
+        *self = Resource::onsen_status_manager().onsen_status_list[&self.key].clone();
+    }
+
+    /// クリアしてるかどうか
+    fn is_cleared(&self) -> bool {
+        self.is_clear || self.is_lower_border || self.is_using_onsen
+    }
+
+    /// 温度の設定
+    fn set_temperature(mut self, temperature: i32) -> Self {
+        self.temperature = temperature;
         self
     }
 
+    /// 前の ステージキー を返す
+    fn back_key(&self) -> String {
+        self.back_key.clone()
+    }
+
+    /// 次の ステージキー を返す
+    fn next_key(&self) -> String {
+        self.next_key.clone()
+    }
+
+    /// stage 番号から ステージキー を返す
     fn get_onsen_key_from_stage(stage_level: i32, stage_number: i32) -> String {
         format!("stage_{}_{}", stage_level, stage_number)
     }
 
+    /// stage 名から OnsenStatus を返す
     fn get_onsen_status_from_name<'a>(name: &str) -> &'a Self {
-        &Resource::onsen_status_manager().onsen_status_list[name]
+        &Resource::user_storage().onsen_status.onsen_status_list[name]
     }
 
+    /// 初期の OnsenStatus を返す
     fn get_init_onsen_status<'a>() -> &'a Self {
         Self::get_onsen_status_from_name(&Resource::user_storage().init_onsen_key)
     }
 
+    /// stage 番号から OnsenStatus を返す
     fn get_onsen_status<'a>(stage_level: i32, stage_number: i32) -> &'a Self {
         Self::get_onsen_status_from_name( &Self::get_onsen_key_from_stage(stage_level, stage_number) )
     }
 
-    fn get_popup_html(&self, link: &ComponentLink<MainModel>) -> Html {
+    /// ポップアップのための HTML を返す
+    fn get_popup_html(&self, link: &ComponentLink<MainModel>, is_stage_view: bool) -> Html {
         let tweet_url = format!("https://twitter.com/intent/tweet?text=On！Sen！%0d{}に入ったよ！%0d&hashtags=onsen", &self.onsen_name);
 
         html! {
             <div id="stage_detail_div">
-                <div id="stage_name">
-                    { &self.onsen_name }
+                <img id="stage_detail_background" src="/resource/wood_kanban_tate5.png" />
+                <div id="stage_name_div">
+                    <div id="stage_name">
+                        { &self.onsen_name }
+                    </div>
                 </div>
                 <div id="stage_detail">
-                    { "★☆☆" }
+                    { if self.is_clear {"★"} else {"☆"} }{ if self.is_using_onsen {"★"} else {"☆"} }{ if self.is_lower_border {"★"} else {"☆"} }
                 </div>
+                { if is_stage_view { self.get_move_navigation_html(link) } else { self.get_clear_navigation_html(link) } }
                 <div id="stage_external_icon">
                     <button>
                         <a href={ tweet_url }>
@@ -213,21 +256,51 @@ impl OnsenStatus {
                         </a>
                     </button>
                 </div>
-                <div id="stage_navigation">
-                    <button type="button" ontouchend=link.callback(|event| Message::StageBack)>
-                        <img src="/resource/navigation_back.png" />
-                    </button>
-                    <button type="button" ontouchend=link.callback(|event| Message::StageEnter)>
-                        <img src="/resource/navigation_go.png" />
-                    </button>
-                    <button type="button" ontouchend=link.callback(|event| Message::StageNext)>
-                        <img src="/resource/navigation_next.png" />
-                    </button>
+                <div id="stage_info">
+                    { &self.info }
                 </div>
             </div>
         }
     }
 
+    fn get_navigation_button(&self, link: &ComponentLink<MainModel>, key: String, text: &str, message: Message) -> Html {
+        if key == self.key {
+            return html!{};
+        }
+
+        html! {
+            <button type="button" ontouchend=link.callback(move |event| message.clone())>
+                { text }
+            </button>
+        }
+    }
+
+    /// 移動するための ナビゲーション を返す
+    fn get_move_navigation_html(&self, link: &ComponentLink<MainModel>) -> Html {
+        html! {
+            <div id="stage_navigation">
+                { self.get_navigation_button(link, self.back_key(), "前", Message::StageBack) }
+                <button type="button" ontouchend=link.callback(|event| Message::StageEnter)>
+                    { "入" }//<img src="/resource/navigation_go.png" />
+                </button>
+                { self.get_navigation_button(link, self.next_key(), "次", Message::StageNext) }
+            </div>
+        }
+    }
+
+    /// クリアしたときの ナビゲーション を返す
+    fn get_clear_navigation_html(&self, link: &ComponentLink<MainModel>) -> Html {
+        html! {
+            <div id="stage_navigation">
+                <button type="button" ontouchend=link.callback(|event| Message::StageBack)>
+                    { "戻" }//<img src="/resource/navigation_back.png" />
+                </button>
+                { self.get_navigation_button(link, self.next_key(), "次", Message::StageNext) }
+            </div>
+        }
+    }
+
+    /// ポップアップのアップデート
     fn update_popup(&self, message: &Message) {
         match message {
             Message::StageHint => {
@@ -373,37 +446,38 @@ impl SelectPage {
             saved_onsen_data: OnsenStatus::get_init_onsen_status()
         }
     }
+
+    const NOT_CLEAR_ONSEN_MARK: &'static str = "/resource/mark_offsen.png";
+    const CLEAR_ONSEN_MARK: &'static str = "/resource/mark_onsen.png";
 }
 impl PageTrait for SelectPage {
     fn view(&self, link: &ComponentLink<MainModel>) -> Html {
+        // ステージ毎の簡易表示(クリア情報と遷移先)
+        let mut select_container_item_content_html = vec![];
+        for stage_number in 0..4 {
+            let clear_mark = if OnsenStatus::get_onsen_status(self.stage_level, stage_number).is_cleared() {
+                Self::CLEAR_ONSEN_MARK
+            } else {
+                Self::NOT_CLEAR_ONSEN_MARK
+            };
+
+            select_container_item_content_html.push(html!{
+                <div class={ format!("stage_{}", stage_number) }>
+                    <img class="is_clear_onsen_mark" src={ clear_mark } alt="onsen_mark"
+                        ontouchend=link.callback( move |event| Message::StageSelect(stage_number) )
+                    />
+                </div>
+            });
+        }
+
         html!{
             <div class="select_container" id="grand_parent_node">
                 <div class="container_item_header">
                     /*{ "banner_area" }*/
                 </div>
                 <div class="select_container_item_content">
-                    <div class="stage_3">
-                        <img class="is_clear_onsen_mark" src="/resource/mark_offsen.png" alt="onsen_mark"
-                            ontouchend=link.callback(|event| Message::StageSelect(3))
-                        />
-                    </div>
-                    <div class="stage_2">
-                        <img class="is_clear_onsen_mark" src="/resource/mark_offsen.png" alt="onsen_mark"
-                            ontouchend=link.callback(|event| Message::StageSelect(2))
-                        />
-                    </div>
-                    <div class="stage_1">
-                        <img class="is_clear_onsen_mark" src="/resource/mark_offsen.png" alt="onsen_mark"
-                            ontouchend=link.callback(|event| Message::StageSelect(1))
-                        />
-                    </div>
-                    <div class="stage_0">
-                        <img class="is_clear_onsen_mark" src="/resource/mark_offsen.png" alt="onsen_mark"
-                            ontouchend=link.callback(|event| Message::StageSelect(0))
-                        />
-                    </div>
-
-                    { self.saved_onsen_data.get_popup_html(link) }
+                    { for select_container_item_content_html }
+                    { self.saved_onsen_data.get_popup_html(link, true) }
                 </div>
                 <div class="container_item_footer">
                     /*{ "banner_area" }*/
@@ -420,37 +494,40 @@ impl PageTrait for SelectPage {
         self.saved_onsen_data.update_popup(&message);
 
         match message {
-            Message::StageBack => {
-                
-            },
-            Message::StageNext => {
-                
-            },
             Message::StageEnter => {
                 return Message::ChangeToQuastionPage(
-                    OnsenStatus::get_onsen_key_from_stage(self.stage_level, self.stage_number)
+                    self.saved_onsen_data.key.clone()
                 );
             },
+            Message::StageBack => {
+                js::console_log!("to stage {}", self.saved_onsen_data.back_key());
+                self.stage_number = i32::MAX;
+                self.saved_onsen_data = OnsenStatus::get_onsen_status_from_name(&self.saved_onsen_data.back_key());
+            },
+            Message::StageNext => {
+                js::console_log!("to stage {}", self.saved_onsen_data.next_key());
+                self.stage_number = i32::MAX;
+                self.saved_onsen_data = OnsenStatus::get_onsen_status_from_name(&self.saved_onsen_data.next_key());
+            },
             Message::StageSelect(stage_number) => {
+                js::console_log!("to stage {}", stage_number);
+
                 let stage_detail_div: HtmlElement = js::dom::get_element_by_id("stage_detail_div").unwrap();
                 stage_detail_div.class_list().remove_1("stage_detail_hide_popup").unwrap();
                 stage_detail_div.class_list().add_1("stage_detail_show_popup").unwrap();
 
-                js::fitty("#stage_name");
-                js::fitty("#stage_detail");
-
                 self.stage_number = stage_number;
                 self.saved_onsen_data = OnsenStatus::get_onsen_status(self.stage_level, self.stage_number);
-                
-                js::console_log!("to stage {}", stage_number);
             },
             Message::StageClose => {
-                if -1 != self.stage_number {
-                    let stage_detail_div: HtmlElement = js::dom::get_element_by_id("stage_detail_div").unwrap();
-                    stage_detail_div.class_list().remove_1("stage_detail_show_popup").unwrap();
-                    stage_detail_div.class_list().add_1("stage_detail_hide_popup").unwrap();
-                    self.stage_number = -1;
+                if -1 == self.stage_number {
+                    return Message::None;
                 }
+
+                let stage_detail_div: HtmlElement = js::dom::get_element_by_id("stage_detail_div").unwrap();
+                stage_detail_div.class_list().remove_1("stage_detail_show_popup").unwrap();
+                stage_detail_div.class_list().add_1("stage_detail_hide_popup").unwrap();
+                self.stage_number = -1;
             },
             _ => (),
         };
@@ -484,6 +561,139 @@ impl QuastionPage {
         self.quastion = OnsenStatus::get_onsen_status_from_name(name);
         self.now_status.sen.deep_copy(&self.quastion.sen);
     }
+
+    fn get_content_view(&self, link: &ComponentLink<MainModel>) -> Html {
+        html!{
+            <div class="container_item_content">
+                { self.now_status.get_popup_html(link, false) }
+                
+                <img id="open_air_bath" src="/resource/onsen_ofuro_noone_bg.png" alt="open_air_bath" />
+                <div id="wood_kanban_div">
+                    <img id="wood_kanban" src="/resource/wood_kanban.png" alt="wood_kanban" />
+                    <div id="wood_kanban_text_div">
+                        <div id="wood_kanban_info">{ &self.quastion.info }</div>
+                        <div id="wood_kanban_text">{ self.quastion.temperature }{ "℃" }</div>
+                    </div>
+                </div>
+                <div id="ondokei_div">
+                    <img id="ondokei" src="/resource/ondokei.png" alt="ondokei" />
+                    <div id="ondokei_text_div">
+                        <p id="ondokei_text">{ self.now_status.temperature }{ "℃" }</p>
+                    </div>
+                </div>
+                <div id="onsen_mark_frame_div">
+                    <img id="onsen_mark_frame" src="/resource/onsen_mark_frame.png" alt="onsen_mark_frame" />
+                    <div id="onsen_mark_sen">
+                    </div>
+                </div>
+                <img id="tutorial_cursor" src="/resource/computer_cursor_finger_white.png" alt="tutorial_cursor" />
+            </div>
+        }
+    }
+
+    /// 温泉マークを移動したときに呼ぶ
+    fn moved_onsen_mark(&mut self) -> Message {
+        // ドロップ時に sen と重なっているかを判断して、重なってるなら演算をする
+        let mut x: f64 = 0.0;
+        let mut y: f64 = 0.0;
+        if let Some(image) = &self.cursor_image {
+            // event から座標が取れなかったので(TouchEndだからカーソルの座標がない？)、TouchMove で動かしてた css から取る
+            let left: String = image.style().get_property_value("left").unwrap();
+            x = left.split_at( left.len() - 2 ).0.parse::<f64>().unwrap();
+            let top: String = image.style().get_property_value("top").unwrap();
+            y = top.split_at( top.len() - 2 ).0.parse::<f64>().unwrap();
+        }
+
+        let sen_op_top = self.sen_op.get_top();
+        let prev_sens = self.now_status.sen.clone();
+        let mut new_op = self.now_status.sen.operation(&self.sen_op.get_top(), &mut |(index, _sen)| {
+            let sen_image: HtmlImageElement = js::dom::get_element_by_id(&format!("bit_{}", index)).unwrap();
+            let rect = sen_image.get_bounding_client_rect();
+
+            // 短角内 は各項目に適用, (On || Off) は全てに適用
+            rect.x() <= x && x < rect.x()+rect.width() && rect.y() <= y && y < rect.y()+rect.height()
+                || sen_op_top == sen::SenOp::On
+                || sen_op_top == sen::SenOp::Off
+        });
+
+        // ドラッグ中の温泉マークを削除
+        if let Some(image) = self.cursor_image.as_mut() {
+            image.remove();
+            self.cursor_image = None;
+        }
+
+        // sen に変化があるか
+        if prev_sens != self.now_status.sen {
+            // tutorial がついてると削除して非表示にする
+            if let Some(tutorial_cursor) = js::dom::get_element_by_id::<HtmlElement>("tutorial_cursor") {
+                tutorial_cursor.class_list().remove_1("tutorial_move_cursor").unwrap();
+            }
+
+            // SenOp::O だったなら消費する
+            if self.sen_op.get_top().is_o() {
+                self.sen_op.pop();
+            }
+        }
+
+        // 新しい SenOp があると点滅させる
+        if !new_op.is_empty() {
+            if let Some(rb_under) = js::dom::get_element_by_id::<HtmlElement>("rb_under") {
+                rb_under.class_list().add_1("blink_new_ruby").unwrap();
+            }
+        }
+
+        // 各種パラメータの変更: SenOp の追加(あるなら), 操作カウンタ++, 温度再設定, 温泉名へ SenOp の追加
+        self.sen_op.append_at_index(&mut new_op);
+        self.now_status.ops_count += 1;
+        self.now_status.temperature = self.now_status.sen.get_number();
+        self.now_status.onsen_name += sen_op_top.to_string().to_lowercase();
+
+        js::console_log!("{:?} / {:?}", self.sen_op, self.now_status);
+
+        // Offの任意 or 正解と同じ温度 なら保存して、結果ポップアップの表示
+        if self.sen_op.get_top() != sen::SenOp::Off && self.now_status.temperature != self.quastion.temperature {
+            // SenOp::Off 以外 かつ 温度が違うとそのままのページ
+            return Message::None;
+        }
+
+        if self.sen_op.get_top() != sen::SenOp::Off {
+            // ☆
+            self.now_status.is_clear = true;
+            self.now_status.is_using_onsen |= self.now_status.onsen_name.roma.find("on").is_some();
+            self.now_status.is_lower_border |= self.now_status.ops_count <= self.quastion.ops_border;
+            
+            // 温泉名の決定
+            self.now_status.onsen_name.japanification();
+        } else {
+            if Resource::user_storage().onsen_status.onsen_status_list[&self.now_status.key].is_cleared() {
+                // 過去にクリアしていると初期化しない
+                self.now_status = Resource::user_storage().onsen_status.onsen_status_list[&self.now_status.key].clone();
+            } else {
+                // json から初期化
+                self.now_status.init();
+                self.now_status.sen.init();
+            }
+        }
+
+        // 保存
+        Resource::user_storage().onsen_status.set_onsen_data(
+            &self.now_status.key,
+            &self.now_status
+        );
+        Resource::user_storage().save_data();
+
+        // top なら SelectPage へ
+        if "top" == self.now_status.key {
+            return Message::ChangeToSelectPage;
+        }
+
+        // 結果ポップアップの表示
+        let stage_detail_div: HtmlElement = js::dom::get_element_by_id("stage_detail_div").unwrap();
+        stage_detail_div.class_list().remove_1("stage_detail_hide_popup").unwrap();
+        stage_detail_div.class_list().add_1("stage_detail_show_popup").unwrap();
+        
+        Message::None
+    }
 }
 impl PageTrait for QuastionPage {
     fn view(&self, link: &ComponentLink<MainModel>) -> Html {
@@ -504,8 +714,10 @@ impl PageTrait for QuastionPage {
                                     { self.sen_op.get_top() }
                                 </rb>
                                 <div
+                                    id="rb_under"
                                     data-front-ruby={ self.sen_op.get_front() }
                                     ontouchstart=link.callback(|_| Message::TouchStartFrontSen)
+                                    onanimationend=link.callback(|_| Message::BlinkAnimationEnd)
                                 ></div>
                             </ruby>
                             { "Sen" }
@@ -517,26 +729,7 @@ impl PageTrait for QuastionPage {
                         </div>
                     </div>
                 </div>
-                <div class="container_item_content">
-                    <img id="open_air_bath" src="/resource/onsen_ofuro_noone_bg.png" alt="open_air_bath" />
-                    <div id="wood_kanban_div">
-                        <img id="wood_kanban" src="/resource/wood_kanban.png" alt="wood_kanban" />
-                        <div id="wood_kanban_text_div">
-                            <div id="wood_kanban_text">{ self.quastion.temperature }{ "℃" }</div>
-                        </div>
-                    </div>
-                    <div id="ondokei_div">
-                        <img id="ondokei" src="/resource/ondokei.png" alt="ondokei" />
-                        <div id="ondokei_text_div">
-                            <p id="ondokei_text">{ self.now_status.temperature }{ "℃" }</p>
-                        </div>
-                    </div>
-                    <div id="onsen_mark_frame_div">
-                        <img id="onsen_mark_frame" src="/resource/onsen_mark_frame.png" alt="onsen_mark_frame" />
-                        <div id="onsen_mark_sen">
-                        </div>
-                    </div>
-                </div>
+                { self.get_content_view(link) }
                 <div class="container_item_footer">
                     /*{ "banner_area" }*/
                 </div>
@@ -571,59 +764,39 @@ impl PageTrait for QuastionPage {
                 }
             },
             Message::TouchEnd => {
-                // ドロップ時に sen と重なっているかを判断して、重なってるなら演算をする
-                let mut x: f64 = 0.0;
-                let mut y: f64 = 0.0;
-                if let Some(image) = &self.cursor_image {
-                    // event から座標が取れなかったので(TouchEndだからカーソルの座標がない？)、TouchMove で動かしてた css から取る
-                    let left: String = image.style().get_property_value("left").unwrap();
-                    x = left.split_at( left.len() - 2 ).0.parse::<f64>().unwrap();
-                    let top: String = image.style().get_property_value("top").unwrap();
-                    y = top.split_at( top.len() - 2 ).0.parse::<f64>().unwrap();
-                }
-
-                let sen_op_top = self.sen_op.get_top();
-                let mut new_op = self.now_status.sen.operation(&self.sen_op.get_top(), &mut |(index, _sen)| {
-                    let sen_image: HtmlImageElement = js::dom::get_element_by_id(&format!("bit_{}", index)).unwrap();
-                    let rect = sen_image.get_bounding_client_rect();
-
-                    // 短角内 は各項目に適用, On, Off は全てに適用
-                    rect.x() <= x && x < rect.x()+rect.width() && rect.y() <= y && y < rect.y()+rect.height()
-                        || sen_op_top == sen::SenOp::On
-                        || sen_op_top == sen::SenOp::Off
-                });
-
-                if self.sen_op.get_top().is_o() {
-                    // もし SenOp::O なら消費する
-                    self.sen_op.pop();
-                }
-
-                self.sen_op.append_at_index(&mut new_op);
-                self.now_status.temperature = self.now_status.sen.get_number();
-                self.now_status.onsen_name += sen_op_top.to_string().to_lowercase();
-
-                // ドラッグ中の温泉マークを削除
-                if let Some(image) = self.cursor_image.as_mut() {
-                   image.remove();
-                   self.cursor_image = None;
-                }
-
-                js::console_log!("{:?} / {:?}", self.sen_op, self.now_status);
-
-                // 正解と同じ温度なら保存して、ステージ選択画面へ
-                if self.now_status.temperature == self.quastion.temperature {
-                    self.now_status.is_clear = true;
-                    self.now_status.onsen_name.japanification();
-                    Resource::user_storage().onsen_status.set_onsen_data(
-                        &self.now_status.key,
-                        &self.now_status
-                    );
-                    Resource::user_storage().save_data();
-                    return Message::ChangeToSelectPage;
-                }
+                return self.moved_onsen_mark();
             },
-            Message::TouchStartBackSen => self.sen_op.prev(),
-            Message::TouchStartFrontSen => self.sen_op.next(),
+            Message::StageBack => {
+                return Message::ChangeToSelectPage;
+            },
+            Message::StageNext => {
+                return Message::ChangeToQuastionPage(
+                    self.now_status.next_key()
+                );
+            },
+            Message::TouchStartBackSen => {
+                if let Some(title_text) = js::dom::get_element_by_id::<HtmlElement>("title_text") {
+                    // ON の幅だと画面の横幅が貫通するので変える
+                    title_text.class_list().remove_1("on_font").unwrap();
+                    title_text.class_list().add_1("normal_font").unwrap();
+                }
+
+                self.sen_op.prev()
+            },
+            Message::TouchStartFrontSen => {
+                if let Some(title_text) = js::dom::get_element_by_id::<HtmlElement>("title_text") {
+                    // ON の幅だと画面の横幅が貫通するので変える
+                    title_text.class_list().remove_1("on_font").unwrap();
+                    title_text.class_list().add_1("normal_font").unwrap();
+                }
+
+                self.sen_op.next()
+            },
+            Message::BlinkAnimationEnd => {
+                if let Some(rb_under) = js::dom::get_element_by_id::<HtmlElement>("rb_under") {
+                    rb_under.class_list().remove_1("blink_new_ruby").unwrap();
+                }
+            }
             _ => (),
         }
 
@@ -648,8 +821,19 @@ impl PageTrait for QuastionPage {
         });
 
         if first_render {
-            // body の最後で読んでねと書いてあったけど、ここでいいっぽい
-            js::fitty("#title_text");
+            if let Some(title_text) = js::dom::get_element_by_id::<HtmlElement>("title_text") {
+                title_text.class_list().remove_1("normal_font").unwrap();
+                title_text.class_list().add_1("on_font").unwrap();
+            }
+
+            // 初回 かつ 未クリア時 で 最初の方のステージ でのみチュートリアル用のカーソルアニメーションを表示
+            if !self.now_status.is_cleared() {
+                if ["top"].iter().any(|&stage_key| stage_key == self.now_status.key) {
+                    if let Some(tutorial_cursor) = js::dom::get_element_by_id::<HtmlElement>("tutorial_cursor") {
+                        tutorial_cursor.class_list().add_1("tutorial_move_cursor").unwrap();
+                    }
+                }
+            }
         }
     }
 }
@@ -686,8 +870,18 @@ impl PageManager {
         self.page.as_ref().view(link)
     }
 
+    const TEXT_LARGE_LIMIT: usize = 6*3;    // 8文字過多
     // 描画後
     fn rendered(&mut self, first_render: bool) {
+        if let Some(stage_name) = js::dom::get_element_by_id::<HtmlElement>("stage_name") {
+            if Self::TEXT_LARGE_LIMIT < stage_name.text_content().unwrap().len() {
+                // 長すぎると流れるアニメーションを付与する
+                stage_name.class_list().add_1("stage_name_flowing").unwrap();
+            } else {
+                stage_name.class_list().remove_1("stage_name_flowing").unwrap();
+            }
+        }
+
         self.page.as_mut().rendered(first_render);
     }
 }

@@ -1,9 +1,6 @@
 use serde::{
     Deserialize,
-    Deserializer,
-    ser::SerializeStruct,
     Serialize,
-    Serializer,
 };
 
 /// Sen の演算の種類
@@ -149,11 +146,15 @@ impl Sen {
 }
 
 /// Sen の本数を扱うクラス
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct SenManager {
     sen_list: Vec<Sen>,
 }
 impl SenManager {
+    pub fn init(&mut self) {
+        self.operation(&SenOp::Off, &mut |(_index, _sen)|{ true });
+    }
+
     pub fn deep_copy(&mut self, x: &Self) {
         self.sen_list = x.sen_list.clone();
         self.sen_list = self.sen_list.iter_mut().map(|sen| { (*sen).bit = 0; *sen } ).collect();
