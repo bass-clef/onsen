@@ -1,26 +1,15 @@
-use futures::{
-    future,
-    Future,
-};
-use js_sys::Promise;
 use wasm_bindgen::{
     JsCast,
     JsValue,
 };
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::{
-    JsFuture,
-};
 use web_sys::{
     HtmlImageElement,
-    Request, RequestInit, RequestMode, Response,
+    UrlSearchParams,
 };
 
 #[wasm_bindgen]
 extern "C" {
-    // 文字の拡大縮小を行ってくれる .js
-    pub fn fitty(s: &str);
-
     #[wasm_bindgen(js_namespace = console, js_name = "log")]
     pub fn js_log(s: &str);
 }
@@ -78,6 +67,14 @@ pub mod dom {
     /// リダイレクト ～キャッシュバスターとともに～
     pub fn super_redirect(url: &str) {
         redirect(&format!( "{}?cache_buster={:?}", url, time::now().as_f64().unwrap() ));
+    }
+
+    /// GETパラメータを返す
+    pub fn get_param(name: &str) -> Option<String> {
+        let window = web_sys::window().expect("no global `window` exist");
+        let param = UrlSearchParams::new_with_str(&window.location().search().unwrap()).unwrap();
+
+        param.get(name)
     }
 }
 

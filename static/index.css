@@ -1,13 +1,13 @@
 @font-face {
   font-family: 'gomarice_mukasi_mukasi';
-  src: url('/resource/gomarice_mukasi_mukasi.ttf');
+  src: url('/resource/font/gomarice_mukasi_mukasi.ttf');
 }
 
 * {
   font-family: 'gomarice_mukasi_mukasi';
 }
 
-html, body {
+html, body, #base_view {
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -15,13 +15,10 @@ html, body {
   padding: 0;
 }
 
-button {
+button, img {
   padding: 0;
   border: none;
   background: transparent;
-}
-button img {
-  display: block;
 }
 
 /* -------------------- select page -------------------- */
@@ -90,7 +87,7 @@ button img {
   position: absolute;
   width: 90%;
   height: 90%;
-  grid-template-rows: 25% 25% 30% 20%;
+  grid-template-rows: 25% 25% 20% 30%;
   grid-template-areas:
     "stage_name"
     "stage_detail"
@@ -219,20 +216,50 @@ button img {
   box-sizing: border-box;
   justify-content: space-evenly;
   grid-area: stage_external_icon;
-  padding: 0 10%;
+
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-areas:
+    "tweet_icon"
+    "hint_icon"
+    "youtube_icon";
 }
-#stage_external_icon > button a {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
+.tweet_icon {
+  grid-area: tweet_icon;
 }
-.stage_link_image {
+.hint_icon {
+  grid-area: hint_icon;
+}
+.youtube_icon {
+  grid-area: youtube_icon;
+}
+
+#stage_external_icon button, #stage_external_icon a, #stage_external_icon img, #hint_onsen_mark_sen {
   display: flex;
+  width: 90%;
+  height: 90%;
   justify-content: center;
+}
+#hint_onsen_mark_sen img {
+  display: flex;
   width: auto;
   height: 90%;
+  justify-content: center;
+  box-sizing: border-box;
 }
+/*
+#hint_onsen_mark_sen {
+  display: flex;
+  width: auto;
+  height: 100%;
+  justify-content: center;
+}
+*
+.hint_sen {
+  width: auto;
+  height: 95%;
+  box-sizing: border-box;
+}
+*/
 
 #stage_info {
   position: absolute;
@@ -441,25 +468,39 @@ button img {
 }
 .tutorial_move_cursor {
   transform: translateX(75%);
-  animation: tutorial_move_cursor_to_sens 6s ease infinite;
+  animation: tutorial_move_cursor_to_sens 12s ease infinite;
 }
 @keyframes tutorial_move_cursor_to_sens {
-  from {
+  49% {
+    visibility: hidden;
+  }
+  50% {
     visibility: visible;
-  }
-  20% {
-    transform: translateY(200%);
-  }
-  40% {
     transform: translateX(75%) translateY(0);
   }
   60% {
-    transform: translateX(-100%) translateY(200%);
+    transform: translateY(200%);
+    visibility: hidden;
   }
-  80% {
+  69% {
+    visibility: hidden;
+  }
+  70% {
+    visibility: visible;
     transform: translateX(75%) translateY(0);
   }
-  to {
+  80% {
+    transform: translateX(-100%) translateY(200%);
+    visibility: hidden;
+  }
+  89% {
+    visibility: hidden;
+  }
+  90% {
+    visibility: visible;
+    transform: translateX(75%) translateY(0);
+  }
+  100% {
     transform: translateX(-200%) translateY(200%);
   }
 }

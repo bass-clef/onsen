@@ -50,12 +50,12 @@ impl SenOp {
                 let self_string = self.to_string();
                 let self_string = self_string.split_at(self_string.len()-1).0;
                 match sen.bit {
-                    0 => "/resource/mark_offsen.png".to_string(),
-                    2 => format!( "/resource/mark_{}sen.png", self_string ),
-                    _ => format!( "/resource/mark_{}sen_0b{:02b}.png", self_string, sen.bit ),
+                    0 => "/resource/image//mark_offsen.png".to_string(),
+                    2 => format!( "/resource/image//mark_{}sen.png", self_string ),
+                    _ => format!( "/resource/image//mark_{}sen_0b{:02b}.png", self_string, sen.bit ),
                 }
             }.to_lowercase(),
-            _ => format!( "/resource/mark_{}sen.png", self ).to_lowercase(),
+            _ => format!( "/resource/image//mark_{}sen.png", self ).to_lowercase(),
         }
     }
 
@@ -141,7 +141,7 @@ impl Sen {
     }
 
     pub fn to_file_name(&self, index: usize) -> String {
-        format!("/resource/mark_{}sen_0b{:02b}.png", if index % 2 == 0 { "small_" } else { "" }, self.bit)
+        format!("/resource/image/mark_{}sen_0b{:02b}.png", if index % 2 == 0 { "small_" } else { "" }, self.bit)
     }
 }
 

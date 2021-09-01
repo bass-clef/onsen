@@ -155,6 +155,7 @@ struct OnsenStatus {
     is_clear: bool,
     is_using_onsen: bool,
     is_lower_border: bool,
+    use_hint: bool,
 
     ops_border: i32,
 
@@ -175,11 +176,13 @@ impl OnsenStatus {
     fn new(key: &str) -> Self {
         Resource::onsen_status_manager().onsen_status_list[key].clone()
             .set_temperature(0)
+            .set_use_hint(Resource::user_storage().onsen_status.onsen_status_list[key].use_hint)
     }
 
     /// 初期状態にする
     fn init(&mut self) {
         *self = Resource::onsen_status_manager().onsen_status_list[&self.key].clone();
+        self.use_hint = Resource::user_storage().onsen_status.onsen_status_list[&self.key].use_hint;
     }
 
     /// クリアしてるかどうか
@@ -190,6 +193,11 @@ impl OnsenStatus {
     /// 温度の設定
     fn set_temperature(mut self, temperature: i32) -> Self {
         self.temperature = temperature;
+        self
+    }
+
+    fn set_use_hint(mut self, use_hint: bool) -> Self {
+        self.use_hint = use_hint;
         self
     }
 
@@ -226,10 +234,23 @@ impl OnsenStatus {
     /// ポップアップのための HTML を返す
     fn get_popup_html(&self, link: &ComponentLink<MainModel>, is_stage_view: bool) -> Html {
         let tweet_url = format!("https://twitter.com/intent/tweet?text=On！Sen！%0d{}に入ったよ！%0d&hashtags=onsen", &self.onsen_name);
+        let hint_button = if self.use_hint {
+            html! {
+                <div class="hint_icon" id="hint_onsen_mark_sen"></div>
+            }
+        } else {
+            html! {
+                <button class="hint_icon">
+                    <a href={ format!("/rewarded_ad?stage_name={}", self.onsen_name) }>
+                        <img src="/resource/image/Tips-icon.png" />
+                    </a>
+                </button>
+            }
+        };
 
         html! {
             <div id="stage_detail_div">
-                <img id="stage_detail_background" src="/resource/wood_kanban_tate5.png" />
+                <img id="stage_detail_background" src="/resource/image/wood_kanban_tate5.png" />
                 <div id="stage_name_div">
                     <div id="stage_name">
                         { &self.onsen_name }
@@ -240,19 +261,15 @@ impl OnsenStatus {
                 </div>
                 { if is_stage_view { self.get_move_navigation_html(link) } else { self.get_clear_navigation_html(link) } }
                 <div id="stage_external_icon">
-                    <button>
+                    <button class="tweet_icon">
                         <a href={ tweet_url }>
-                            <img class="stage_link_image" src="/resource/Twitter_social_icons_rounded_square_blue.png" />
+                            <img src="/resource/image/Twitter_social_icons_rounded_square_blue.png" />
                         </a>
                     </button>
-                    <button>
-                        <a href={ format!("/rewarded_ad?stage_name={}", self.onsen_name) }>
-                            <img class="stage_link_image" src="/resource/Tips-icon.png" />
-                        </a>
-                    </button>
-                    <button>
+                    { hint_button }
+                    <button class="youtube_icon">
                         <a href="https://www.youtube.com/channel/UCVxzptdb4sw84z2rTh_1AJQ">
-                            <img class="stage_link_image" src="/resource/youtube_social_squircle_red.png" />
+                            <img src="/resource/image/youtube_social_squircle_red.png" />
                         </a>
                     </button>
                 </div>
@@ -265,7 +282,10 @@ impl OnsenStatus {
 
     fn get_navigation_button(&self, link: &ComponentLink<MainModel>, key: String, text: &str, message: Message) -> Html {
         if key == self.key {
-            return html!{};
+            // 無表示だとレイアウトが崩れるので、空ボタンを返す
+            return html!{
+                <button type="button" ontouchend=link.callback(move |event| message.clone())>{ "　　" }</button>
+            };
         }
 
         html! {
@@ -281,7 +301,7 @@ impl OnsenStatus {
             <div id="stage_navigation">
                 { self.get_navigation_button(link, self.back_key(), "前", Message::StageBack) }
                 <button type="button" ontouchend=link.callback(|event| Message::StageEnter)>
-                    { "入" }//<img src="/resource/navigation_go.png" />
+                    { "入" }
                 </button>
                 { self.get_navigation_button(link, self.next_key(), "次", Message::StageNext) }
             </div>
@@ -293,10 +313,29 @@ impl OnsenStatus {
         html! {
             <div id="stage_navigation">
                 <button type="button" ontouchend=link.callback(|event| Message::StageBack)>
-                    { "戻" }//<img src="/resource/navigation_back.png" />
+                    { "戻" }
+                </button>
+                <button type="button" ontouchend=link.callback(|event| Message::StageEnter)>
+                    { "再" }
                 </button>
                 { self.get_navigation_button(link, self.next_key(), "次", Message::StageNext) }
             </div>
+        }
+    }
+
+    /// ポップアップを表示する
+    fn show_popup() {
+        if let Some(stage_detail_div) = js::dom::get_element_by_id::<HtmlElement>("stage_detail_div") {
+            stage_detail_div.class_list().remove_1("stage_detail_hide_popup").unwrap();
+            stage_detail_div.class_list().add_1("stage_detail_show_popup").unwrap();
+        }
+    }
+
+    /// ポップアップを非表示にする
+    fn hide_popup() {
+        if let Some(stage_detail_div) = js::dom::get_element_by_id::<HtmlElement>("stage_detail_div") {
+            stage_detail_div.class_list().remove_1("stage_detail_show_popup").unwrap();
+            stage_detail_div.class_list().add_1("stage_detail_hide_popup").unwrap();
         }
     }
 
@@ -304,9 +343,32 @@ impl OnsenStatus {
     fn update_popup(&self, message: &Message) {
         match message {
             Message::StageHint => {
+                Resource::user_storage().init_onsen_key = self.key.to_string();
+                Resource::user_storage().save_data();
                 js::fs::get_sync_request(&format!("/rewarded_ad?stage_name={}", self.onsen_name));
             },
             _ => (),
+        }
+    }
+
+    fn rendered(&self) {
+        if let Some(hint_onsen_mark_sen) = js::dom::get_element_by_id::<HtmlElement>("hint_onsen_mark_sen") {
+            if 0 == hint_onsen_mark_sen.child_element_count() {
+                Resource::onsen_status_manager().onsen_status_list[&self.key].sen.for_each(|(index, sen)|{
+                    // 存在すれば上書き、なければ作成
+                    match js::dom::get_element_by_id::<HtmlImageElement>( &format!("bit_{}", index) ) {
+                        Some(sen_image) => {
+                            sen_image.set_src( &sen.to_file_name(index) );
+                        },
+                        None => {
+                            let sen_image = js::dom::make_img_element( &sen.to_file_name(index) );
+                            sen_image.set_class_name("hint_sen");
+
+                            hint_onsen_mark_sen.append_child(&sen_image).unwrap();
+                        },
+                    }
+                });
+            }
         }
     }
 }
@@ -390,10 +452,60 @@ impl Default for UserStorage {
     }
 }
 
+use strum::IntoEnumIterator;
+#[derive(strum_macros::EnumIter)]
+enum SoundKind {
+    DownTemp,
+    Sen01,
+    Sen10,
+    Sen11,
+    StageEnter,
+    UpTemp,
+}
+impl SoundKind {
+    fn get_id(&self) -> &str {
+        match *self {
+            Self::DownTemp => "se_down_temp.mp3",
+            Self::Sen01 => "se_sen_0b01.wav",
+            Self::Sen10 => "se_sen_0b10.wav",
+            Self::Sen11 => "se_sen_0b11.wav",
+            Self::StageEnter => "se_stage_enter.mp3",
+            Self::UpTemp => "se_up_temp.ogg",
+        }
+    }
+
+    fn get_audio_html(&self) -> Html {
+        html! {
+            <audio id={ self.get_id() } preload="auto" src={ format!("/resource/sound/{}", self.get_id()) } />
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct Sound;
+impl Sound {
+    fn play(&self, sound_kind: SoundKind) {
+        if let Some(audio_element) = js::dom::get_element_by_id::<HtmlMediaElement>(sound_kind.get_id()) {
+            audio_element.set_current_time(0.0);
+            let _ = audio_element.play();
+        }
+    }
+}
+impl PageTrait for Sound {
+    fn view(&self, _link: &ComponentLink<MainModel>) -> Html {
+        html!{
+            <>
+                { for SoundKind::iter().map(|sound_kind| sound_kind.get_audio_html()) }
+            </>
+        }
+    }
+}
+
 /// 一度だけ読み込む必要があるリソースを保持するクラス
 struct Resource {
     onsen_status_manager: Option<OnsenStatusManager>,   // ステージ情報
     user_storage: Option<UserStorage>,                  // ユーザー情報
+    sound: Option<Sound>,                               // 音
 }
 impl Resource {
     fn get_onsen_status_manager(&mut self) -> &OnsenStatusManager {
@@ -412,6 +524,14 @@ impl Resource {
         self.user_storage.as_mut().unwrap()
     }
 
+    fn get_sound(&mut self) -> &Sound {
+        if self.sound.is_none() {
+            self.sound = Some(Sound::default());
+        }
+
+        self.sound.as_ref().unwrap()
+    }
+
     pub fn onsen_status_manager<'a>() -> &'a OnsenStatusManager {
         unsafe{ RESOURCE.get_onsen_status_manager() }
     }
@@ -419,10 +539,15 @@ impl Resource {
     pub fn user_storage<'a>() -> &'a mut UserStorage {
         unsafe{ RESOURCE.get_user_storage() }
     }
+
+    pub fn sound<'a>() -> &'a Sound {
+        unsafe{ RESOURCE.get_sound() }
+    }
 }
 static mut RESOURCE: Resource = Resource {
     onsen_status_manager: None,
     user_storage: None,
+    sound: None,
 };
 
 /// ページ遷移用の雛形
@@ -447,8 +572,8 @@ impl SelectPage {
         }
     }
 
-    const NOT_CLEAR_ONSEN_MARK: &'static str = "/resource/mark_offsen.png";
-    const CLEAR_ONSEN_MARK: &'static str = "/resource/mark_onsen.png";
+    const NOT_CLEAR_ONSEN_MARK: &'static str = "/resource/image/mark_offsen.png";
+    const CLEAR_ONSEN_MARK: &'static str = "/resource/image/mark_onsen.png";
 }
 impl PageTrait for SelectPage {
     fn view(&self, link: &ComponentLink<MainModel>) -> Html {
@@ -483,7 +608,7 @@ impl PageTrait for SelectPage {
                     /*{ "banner_area" }*/
                 </div>
                 <img id="onsen_select_map"
-                    src="/resource/onsen_select_map.png"
+                    src="/resource/image/onsen_select_map.png"
                     ontouchend=link.callback(|event| Message::StageClose)
                 />
             </div>
@@ -495,27 +620,30 @@ impl PageTrait for SelectPage {
 
         match message {
             Message::StageEnter => {
+                Resource::sound().play(SoundKind::StageEnter);
+    
                 return Message::ChangeToQuastionPage(
                     self.saved_onsen_data.key.clone()
                 );
             },
             Message::StageBack => {
-                js::console_log!("to stage {}", self.saved_onsen_data.back_key());
-                self.stage_number = i32::MAX;
-                self.saved_onsen_data = OnsenStatus::get_onsen_status_from_name(&self.saved_onsen_data.back_key());
+                if self.saved_onsen_data.back_key() != self.saved_onsen_data.key {
+                    js::console_log!("to stage {}", self.saved_onsen_data.back_key());
+                    self.stage_number = i32::MAX;
+                    self.saved_onsen_data = OnsenStatus::get_onsen_status_from_name(&self.saved_onsen_data.back_key());
+                }
             },
             Message::StageNext => {
-                js::console_log!("to stage {}", self.saved_onsen_data.next_key());
-                self.stage_number = i32::MAX;
-                self.saved_onsen_data = OnsenStatus::get_onsen_status_from_name(&self.saved_onsen_data.next_key());
+                if self.saved_onsen_data.next_key() != self.saved_onsen_data.key {
+                    js::console_log!("to stage {}", self.saved_onsen_data.next_key());
+                    self.stage_number = i32::MAX;
+                    self.saved_onsen_data = OnsenStatus::get_onsen_status_from_name(&self.saved_onsen_data.next_key());
+                }
             },
             Message::StageSelect(stage_number) => {
                 js::console_log!("to stage {}", stage_number);
 
-                let stage_detail_div: HtmlElement = js::dom::get_element_by_id("stage_detail_div").unwrap();
-                stage_detail_div.class_list().remove_1("stage_detail_hide_popup").unwrap();
-                stage_detail_div.class_list().add_1("stage_detail_show_popup").unwrap();
-
+                OnsenStatus::show_popup();
                 self.stage_number = stage_number;
                 self.saved_onsen_data = OnsenStatus::get_onsen_status(self.stage_level, self.stage_number);
             },
@@ -524,15 +652,17 @@ impl PageTrait for SelectPage {
                     return Message::None;
                 }
 
-                let stage_detail_div: HtmlElement = js::dom::get_element_by_id("stage_detail_div").unwrap();
-                stage_detail_div.class_list().remove_1("stage_detail_show_popup").unwrap();
-                stage_detail_div.class_list().add_1("stage_detail_hide_popup").unwrap();
+                OnsenStatus::hide_popup();
                 self.stage_number = -1;
             },
             _ => (),
         };
 
         Message::None
+    }
+
+    fn rendered(&mut self, _first_render: bool) {
+        self.saved_onsen_data.rendered();
     }
 }
 
@@ -544,6 +674,8 @@ struct QuastionPage {
     cursor_image: Option<HtmlImageElement>,
 }
 impl QuastionPage {
+    const HINT_PARAM_NAME: &'static str = "hint";
+
     fn new(name: &str) -> Self {
         let mut own = Self {
             sen_op: sen::SenOpManager::new( vec![sen::SenOp::Off, sen::SenOp::On, sen::SenOp::Or, sen::SenOp::And, sen::SenOp::Not], Some(1) ),
@@ -552,6 +684,26 @@ impl QuastionPage {
             cursor_image: None,
         };
         own.load_quastion(name);
+
+        if let Some(_) = js::dom::get_param(Self::HINT_PARAM_NAME) {
+            if Resource::user_storage().onsen_status.onsen_status_list[&own.now_status.key].is_cleared() {
+                // 過去にクリアしていると初期化しない
+                own.now_status = Resource::user_storage().onsen_status.onsen_status_list[&own.now_status.key].clone();
+            } else {
+                // json から初期化
+                own.now_status.init();
+                own.now_status.sen.init();
+            }
+            own.now_status = own.now_status.set_use_hint(true);
+
+            Resource::user_storage().onsen_status.set_onsen_data(
+                &own.now_status.key,
+                &own.now_status
+            );
+            Resource::user_storage().save_data();
+            js::console_log!("hint on");
+            js::dom::redirect("/index.html");
+        }
 
         own
     }
@@ -567,26 +719,26 @@ impl QuastionPage {
             <div class="container_item_content">
                 { self.now_status.get_popup_html(link, false) }
                 
-                <img id="open_air_bath" src="/resource/onsen_ofuro_noone_bg.png" alt="open_air_bath" />
+                <img id="open_air_bath" src="/resource/image/onsen_ofuro_noone_bg.png" alt="open_air_bath" />
                 <div id="wood_kanban_div">
-                    <img id="wood_kanban" src="/resource/wood_kanban.png" alt="wood_kanban" />
+                    <img id="wood_kanban" src="/resource/image/wood_kanban.png" alt="wood_kanban" />
                     <div id="wood_kanban_text_div">
                         <div id="wood_kanban_info">{ &self.quastion.info }</div>
                         <div id="wood_kanban_text">{ self.quastion.temperature }{ "℃" }</div>
                     </div>
                 </div>
                 <div id="ondokei_div">
-                    <img id="ondokei" src="/resource/ondokei.png" alt="ondokei" />
+                    <img id="ondokei" src="/resource/image/ondokei.png" alt="ondokei" />
                     <div id="ondokei_text_div">
                         <p id="ondokei_text">{ self.now_status.temperature }{ "℃" }</p>
                     </div>
                 </div>
                 <div id="onsen_mark_frame_div">
-                    <img id="onsen_mark_frame" src="/resource/onsen_mark_frame.png" alt="onsen_mark_frame" />
+                    <img id="onsen_mark_frame" src="/resource/image/onsen_mark_frame.png" alt="onsen_mark_frame" />
                     <div id="onsen_mark_sen">
                     </div>
                 </div>
-                <img id="tutorial_cursor" src="/resource/computer_cursor_finger_white.png" alt="tutorial_cursor" />
+                <img id="tutorial_cursor" src="/resource/image/computer_cursor_finger_white.png" alt="tutorial_cursor" />
             </div>
         }
     }
@@ -642,11 +794,22 @@ impl QuastionPage {
             }
         }
 
+        let prev_temperature = self.now_status.temperature;
+        
         // 各種パラメータの変更: SenOp の追加(あるなら), 操作カウンタ++, 温度再設定, 温泉名へ SenOp の追加
         self.sen_op.append_at_index(&mut new_op);
         self.now_status.ops_count += 1;
         self.now_status.temperature = self.now_status.sen.get_number();
         self.now_status.onsen_name += sen_op_top.to_string().to_lowercase();
+
+        // 温度の上下に応じてSEを流す
+        if self.now_status.temperature != self.quastion.temperature {
+            if self.now_status.temperature < prev_temperature {
+                Resource::sound().play(SoundKind::DownTemp);
+            } else if prev_temperature < self.now_status.temperature {
+                Resource::sound().play(SoundKind::UpTemp);
+            }
+        }
 
         js::console_log!("{:?} / {:?}", self.sen_op, self.now_status);
 
@@ -661,7 +824,7 @@ impl QuastionPage {
             self.now_status.is_clear = true;
             self.now_status.is_using_onsen |= self.now_status.onsen_name.roma.find("on").is_some();
             self.now_status.is_lower_border |= self.now_status.ops_count <= self.quastion.ops_border;
-            
+
             // 温泉名の決定
             self.now_status.onsen_name.japanification();
         } else {
@@ -673,6 +836,15 @@ impl QuastionPage {
                 self.now_status.init();
                 self.now_status.sen.init();
             }
+        }
+
+        // クリア時に星の数に応じて「カッポーン」を鳴らす
+        let se_kind_count: i8 = self.now_status.is_clear as i8 + self.now_status.is_using_onsen as i8 + self.now_status.is_lower_border as i8;
+        match se_kind_count {
+            1 => Resource::sound().play(SoundKind::Sen01),
+            2 => Resource::sound().play(SoundKind::Sen10),
+            3 => Resource::sound().play(SoundKind::Sen11),
+            _ => (),
         }
 
         // 保存
@@ -688,9 +860,7 @@ impl QuastionPage {
         }
 
         // 結果ポップアップの表示
-        let stage_detail_div: HtmlElement = js::dom::get_element_by_id("stage_detail_div").unwrap();
-        stage_detail_div.class_list().remove_1("stage_detail_hide_popup").unwrap();
-        stage_detail_div.class_list().add_1("stage_detail_show_popup").unwrap();
+        OnsenStatus::show_popup();
         
         Message::None
     }
@@ -703,7 +873,7 @@ impl PageTrait for QuastionPage {
                     /*{ "banner_area" }*/
                 </div>
                 <div class="container_item_title">
-                    <div id="title_text">
+                    <div id="title_text" class="on_font">
                         <div>
                             <ruby>
                                 <div
@@ -766,10 +936,19 @@ impl PageTrait for QuastionPage {
             Message::TouchEnd => {
                 return self.moved_onsen_mark();
             },
+            Message::StageEnter => {
+                OnsenStatus::hide_popup();
+
+                return Message::ChangeToQuastionPage(
+                    self.now_status.key.clone()
+                );
+            },
             Message::StageBack => {
                 return Message::ChangeToSelectPage;
             },
             Message::StageNext => {
+                OnsenStatus::hide_popup();
+
                 return Message::ChangeToQuastionPage(
                     self.now_status.next_key()
                 );
@@ -804,6 +983,8 @@ impl PageTrait for QuastionPage {
     }
 
     fn rendered(&mut self, first_render: bool) {
+        self.now_status.rendered();
+
         // onsen_mark_sen に動的にぶら下げるので sen はここで表示
         let onsen_mark_sen: HtmlElement = js::dom::get_element_by_id("onsen_mark_sen").unwrap();
         self.now_status.sen.for_each(|(index, sen)|{
@@ -821,9 +1002,8 @@ impl PageTrait for QuastionPage {
         });
 
         if first_render {
-            if let Some(title_text) = js::dom::get_element_by_id::<HtmlElement>("title_text") {
-                title_text.class_list().remove_1("normal_font").unwrap();
-                title_text.class_list().add_1("on_font").unwrap();
+            if self.now_status.use_hint {
+                OnsenStatus::show_popup();
             }
 
             // 初回 かつ 未クリア時 で 最初の方のステージ でのみチュートリアル用のカーソルアニメーションを表示
@@ -854,8 +1034,7 @@ impl PageManager {
                 Resource::user_storage().init_onsen_key = name;
                 Resource::user_storage().save_data();
 
-                js::console_log!("{:?}", js::time::now());
-                js::dom::super_redirect( "/index.html" );
+                self.page = Box::new(QuastionPage::new(&Resource::user_storage().init_onsen_key));
             },
             Message::ChangeToSelectPage => {
                 self.page = Box::new(SelectPage::new());
@@ -867,7 +1046,12 @@ impl PageManager {
     }
 
     fn view(&self, link: &ComponentLink<MainModel>) -> Html {
-        self.page.as_ref().view(link)
+        html! {
+            <div id="base_view">
+                { self.page.as_ref().view(link) }
+                { Resource::sound().view(link) }
+            </div>
+        }
     }
 
     const TEXT_LARGE_LIMIT: usize = 6*3;    // 8文字過多
