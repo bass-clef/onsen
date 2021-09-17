@@ -1,3 +1,8 @@
 target
 Cargo.lock
 build.sh
+
+*.png
+*.map
+*.ttf
+

@@ -162,6 +162,8 @@ button, img {
 #stage_name {
   position: absolute;
   display: flex;
+  width: auto;
+  height: auto;
   margin: 0 auto;
   justify-content: center;
   grid-area: stage_name;
@@ -177,6 +179,33 @@ button, img {
   transform: translateX(100%);
 }
 @keyframes stage_name_flowing {
+  10% {
+    visibility: visible;
+  }
+  20% {
+    visibility: visible;
+  }
+  30% {
+    visibility: visible;
+  }
+  40% {
+    visibility: visible;
+  }
+  50% {
+    visibility: visible;
+  }
+  60% {
+    visibility: visible;
+  }
+  70% {
+    visibility: visible;
+  }
+  80% {
+    visibility: visible;
+  }
+  90% {
+    visibility: visible;
+  }
   100% {
     transform: translateX(-100%);
   }
@@ -246,20 +275,6 @@ button, img {
   justify-content: center;
   box-sizing: border-box;
 }
-/*
-#hint_onsen_mark_sen {
-  display: flex;
-  width: auto;
-  height: 100%;
-  justify-content: center;
-}
-*
-.hint_sen {
-  width: auto;
-  height: 95%;
-  box-sizing: border-box;
-}
-*/
 
 #stage_info {
   position: absolute;
@@ -333,10 +348,7 @@ button, img {
   height: auto;
 }
 .normal_font {
-  font-size: 17.5vw;
-}
-.on_font {
-  font-size: 23vw;
+  font-size: 17.0vw;
 }
 .blink_new_ruby {
   animation: blink_new_ruby 0.2s 5;
@@ -466,17 +478,46 @@ button, img {
   height: auto;
   visibility: hidden;
 }
-.tutorial_move_cursor {
-  transform: translateX(75%);
-  animation: tutorial_move_cursor_to_sens 12s ease infinite;
+.tutorial_senop_cursor {
+  animation: tutorial_senop_cursor 4s ease infinite;
 }
-@keyframes tutorial_move_cursor_to_sens {
+@keyframes tutorial_senop_cursor {
+  0% {
+    transform: translateX(-240%) translateY(30%);
+  }
   49% {
     visibility: hidden;
   }
   50% {
     visibility: visible;
-    transform: translateX(75%) translateY(0);
+    transform: translateX(-240%) translateY(30%);
+  }
+  60% {
+    transform: translateX(-240%) translateY(40%);
+  }
+  70% {
+    transform: translateX(-240%) translateY(30%);
+  }
+  80% {
+    transform: translateX(-240%) translateY(40%);
+  }
+  100% {
+    transform: translateX(-240%) translateY(30%);
+  }
+}
+.tutorial_move_cursor {
+  animation: tutorial_move_cursor_to_sens 6s ease infinite;
+}
+@keyframes tutorial_move_cursor_to_sens {
+  0% {
+    transform: translateX(25%) translateY(0);
+  }
+  49% {
+    visibility: hidden;
+  }
+  50% {
+    visibility: visible;
+    transform: translateX(25%) translateY(0);
   }
   60% {
     transform: translateY(200%);
@@ -487,7 +528,7 @@ button, img {
   }
   70% {
     visibility: visible;
-    transform: translateX(75%) translateY(0);
+    transform: translateX(25%) translateY(0);
   }
   80% {
     transform: translateX(-100%) translateY(200%);
@@ -498,9 +539,46 @@ button, img {
   }
   90% {
     visibility: visible;
-    transform: translateX(75%) translateY(0);
+    transform: translateX(25%) translateY(0);
   }
   100% {
     transform: translateX(-200%) translateY(200%);
   }
 }
+
+/* 扉 */
+#left_door, #right_door {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+#left_door {
+  left: -50%;
+}
+#right_door {
+  left: 50%;
+}
+.open_left_door {
+  animation: open_left_door 2s forwards;
+}
+.open_right_door {
+  animation: open_right_door 2s forwards;
+}
+@keyframes open_left_door {
+  0% {
+    left: -50%;
+  }
+  100% {
+    left: -100%;
+  }
+}
+@keyframes open_right_door {
+  0% {
+    left: 50%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+

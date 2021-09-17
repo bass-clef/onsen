@@ -12,6 +12,9 @@ use web_sys::{
 extern "C" {
     #[wasm_bindgen(js_namespace = console, js_name = "log")]
     pub fn js_log(s: &str);
+
+    #[wasm_bindgen(js_name = "alert")]
+    pub fn alert(s: &str);
 }
 
 #[wasm_bindgen(inline_js = "export function delete_all_cache() { caches.keys().then(function(keyList) { return Promise.all(keyList.map(function(key) { caches.delete(key); })); }); }")]
@@ -19,6 +22,12 @@ extern "C" {
     /// キャッシュの削除
     pub fn delete_all_cache();
 }
+
+/// JavaScript 側の console に出力するために移植した
+macro_rules! popup_alert {
+    ($($t:tt)*) => (crate::js::alert(&format_args!($($t)*).to_string()))
+}
+pub(crate) use popup_alert;
 
 /// JavaScript 側の console に出力するために移植した
 macro_rules! console_log {

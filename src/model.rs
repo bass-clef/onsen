@@ -30,6 +30,8 @@ pub enum Message {
     TouchStartBackSen,
     TouchStartFrontSen,
     BlinkAnimationEnd,
+    OpenDoor,
+    OpenedDoor,
 
     // select page
     StageSelect(i32),
@@ -37,7 +39,10 @@ pub enum Message {
     StageNext,
     StageEnter,
     StageClose,
+    StageTweet,
     StageHint,
+    StageYoutube,
+    AllComplete,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -185,9 +190,19 @@ impl OnsenStatus {
         self.use_hint = Resource::user_storage().onsen_status.onsen_status_list[&self.key].use_hint;
     }
 
+    /// user storage に保存されている状態にする
+    fn init_from_user_storage(&mut self) {
+        *self = Resource::user_storage().onsen_status.onsen_status_list[&self.key].clone();
+    }
+
     /// クリアしてるかどうか
     fn is_cleared(&self) -> bool {
         self.is_clear || self.is_lower_border || self.is_using_onsen
+    }
+
+    /// ☆をコンプリートしてるかどうか
+    fn is_complete(&self) -> bool {
+        self.is_clear && self.is_lower_border && self.is_using_onsen
     }
 
     /// 温度の設定
@@ -199,6 +214,24 @@ impl OnsenStatus {
     fn set_use_hint(mut self, use_hint: bool) -> Self {
         self.use_hint = use_hint;
         self
+    }
+
+    fn use_hint_and_save(&mut self) {
+        if Resource::user_storage().onsen_status.onsen_status_list[&self.key].is_cleared() {
+            // 過去にクリアしていると初期化しない
+            self.init_from_user_storage();
+        } else {
+            // json から初期化
+            self.init();
+            self.sen.init();
+        }
+        self.use_hint = true;
+
+        Resource::user_storage().onsen_status.set_onsen_data(
+            &self.key,
+            &self
+        );
+        Resource::user_storage().save_data();
     }
 
     /// 前の ステージキー を返す
@@ -233,7 +266,13 @@ impl OnsenStatus {
 
     /// ポップアップのための HTML を返す
     fn get_popup_html(&self, link: &ComponentLink<MainModel>, is_stage_view: bool) -> Html {
-        let tweet_url = format!("https://twitter.com/intent/tweet?text=On！Sen！%0d{}に入ったよ！%0d&hashtags=onsen", &self.onsen_name);
+        let tweet_url = if self.is_cleared() {
+            format!("{}に入ったよ！", &self.onsen_name)
+        } else {
+            format!("{}に入りたい！", &self.info)
+        };
+        let tweet_url = format!("https://twitter.com/intent/tweet?text=On！Sen！%0d{}%0d&hashtags=onsen", tweet_url);
+        
         let hint_button = if self.use_hint {
             html! {
                 <div class="hint_icon" id="hint_onsen_mark_sen"></div>
@@ -261,14 +300,18 @@ impl OnsenStatus {
                 </div>
                 { if is_stage_view { self.get_move_navigation_html(link) } else { self.get_clear_navigation_html(link) } }
                 <div id="stage_external_icon">
-                    <button class="tweet_icon">
-                        <a href={ tweet_url }>
+                    <button class="tweet_icon"
+                        ontouchend=link.callback(|_| Message::StageTweet)
+                    >
+                        <a target="_blank" href={ tweet_url }>
                             <img src="/resource/image/Twitter_social_icons_rounded_square_blue.png" />
                         </a>
                     </button>
                     { hint_button }
-                    <button class="youtube_icon">
-                        <a href="https://www.youtube.com/channel/UCVxzptdb4sw84z2rTh_1AJQ">
+                    <button class="youtube_icon"
+                        ontouchend=link.callback(|_| Message::StageYoutube)
+                    >
+                        <a target="_blank" href="https://www.youtube.com/channel/UCVxzptdb4sw84z2rTh_1AJQ?sub_confirmation=1">
                             <img src="/resource/image/youtube_social_squircle_red.png" />
                         </a>
                     </button>
@@ -323,6 +366,14 @@ impl OnsenStatus {
         }
     }
 
+    fn is_show_popup() -> bool {
+        if let Some(stage_detail_div) = js::dom::get_element_by_id::<HtmlElement>("stage_detail_div") {
+            return stage_detail_div.class_list().contains("stage_detail_show_popup");
+        }
+
+        false
+    }
+
     /// ポップアップを表示する
     fn show_popup() {
         if let Some(stage_detail_div) = js::dom::get_element_by_id::<HtmlElement>("stage_detail_div") {
@@ -353,22 +404,21 @@ impl OnsenStatus {
 
     fn rendered(&self) {
         if let Some(hint_onsen_mark_sen) = js::dom::get_element_by_id::<HtmlElement>("hint_onsen_mark_sen") {
-            if 0 == hint_onsen_mark_sen.child_element_count() {
-                Resource::onsen_status_manager().onsen_status_list[&self.key].sen.for_each(|(index, sen)|{
-                    // 存在すれば上書き、なければ作成
-                    match js::dom::get_element_by_id::<HtmlImageElement>( &format!("bit_{}", index) ) {
-                        Some(sen_image) => {
-                            sen_image.set_src( &sen.to_file_name(index) );
-                        },
-                        None => {
-                            let sen_image = js::dom::make_img_element( &sen.to_file_name(index) );
-                            sen_image.set_class_name("hint_sen");
+            Resource::onsen_status_manager().onsen_status_list[&self.key].sen.for_each(|(index, sen)|{
+                // 存在すれば上書き、なければ作成
+                match js::dom::get_element_by_id::<HtmlImageElement>( &format!("hint_bit_{}", index) ) {
+                    Some(sen_image) => {
+                        sen_image.set_src( &sen.to_file_name(index) );
+                    },
+                    None => {
+                        let sen_image = js::dom::make_img_element( &sen.to_file_name(index) );
+                        sen_image.set_id( &format!("hint_bit_{}", index) );
+                        sen_image.set_class_name("hint_sen");
 
-                            hint_onsen_mark_sen.append_child(&sen_image).unwrap();
-                        },
-                    }
-                });
-            }
+                        hint_onsen_mark_sen.append_child(&sen_image).unwrap();
+                    },
+                }
+            });
         }
     }
 }
@@ -376,6 +426,7 @@ impl OnsenStatus {
 // 問題を管理するクラス
 #[derive(Debug, Deserialize, Serialize)]
 struct OnsenStatusManager {
+    pub level_list: Vec<i32>,
     pub onsen_status_list: HashMap<String, OnsenStatus>,
 }
 impl OnsenStatusManager {
@@ -404,6 +455,7 @@ impl OnsenStatusManager {
 #[derive(Debug, Deserialize, Serialize)]
 struct UserStorage {
     init_onsen_key: String,
+    init_stage_level: i32,
     onsen_status: OnsenStatusManager,
 }
 impl UserStorage {
@@ -413,6 +465,7 @@ impl UserStorage {
     fn new(init_onsen_key: String) -> Self {
         Self {
             init_onsen_key,
+            init_stage_level: 0,
             onsen_status: OnsenStatusManager::from_file(),
         }
     }
@@ -453,24 +506,34 @@ impl Default for UserStorage {
 }
 
 use strum::IntoEnumIterator;
-#[derive(strum_macros::EnumIter)]
+#[derive(Clone, Copy, Debug, strum_macros::EnumIter, PartialEq)]
 enum SoundKind {
+    ButtonUp,
     DownTemp,
     Sen01,
     Sen10,
     Sen11,
     StageEnter,
     UpTemp,
+    BgmStageDefault,
+    BgmStageTop,
+    BgmStageLevel1,
+    BgmStageLevel2,
 }
 impl SoundKind {
     fn get_id(&self) -> &str {
         match *self {
+            Self::ButtonUp => "se_button_up.mp3",
             Self::DownTemp => "se_down_temp.mp3",
             Self::Sen01 => "se_sen_0b01.wav",
             Self::Sen10 => "se_sen_0b10.wav",
             Self::Sen11 => "se_sen_0b11.wav",
             Self::StageEnter => "se_stage_enter.mp3",
             Self::UpTemp => "se_up_temp.ogg",
+            Self::BgmStageDefault => "bgm_stage_default.wav",
+            Self::BgmStageTop => "bgm_stage_top.wav",
+            Self::BgmStageLevel1 => "bgm_stage_level_1.wav",
+            Self::BgmStageLevel2 => "bgm_stage_level_2.wav",
         }
     }
 
@@ -482,12 +545,60 @@ impl SoundKind {
 }
 
 #[derive(Debug, Default)]
-struct Sound;
+struct Sound {
+    playing_sound: Vec<SoundKind>,
+}
 impl Sound {
-    fn play(&self, sound_kind: SoundKind) {
+    fn is_playing(&self, sound_kind: &SoundKind) -> bool {
+        self.playing_sound.iter().any(|sk| sk == sound_kind)
+    }
+
+    fn play_loop(&mut self, sound_kind: SoundKind) {
+        if self.is_playing(&sound_kind) {
+            return;
+        }
+
         if let Some(audio_element) = js::dom::get_element_by_id::<HtmlMediaElement>(sound_kind.get_id()) {
+            audio_element.set_loop(true);
+        }
+        self.play(sound_kind);
+    }
+    fn play(&mut self, sound_kind: SoundKind) {
+        if let Some(audio_element) = js::dom::get_element_by_id::<HtmlMediaElement>(sound_kind.get_id()) {
+            if !self.is_playing(&sound_kind) {
+                self.playing_sound.push(sound_kind.clone());
+            }
+
             audio_element.set_current_time(0.0);
             let _ = audio_element.play();
+            
+            js::console_log!("play {:?}", sound_kind.get_id());
+        }
+    }
+
+    fn pause(&mut self, sound_kind: SoundKind) {
+        if let Some(index) = self.playing_sound.iter().position(|sk| *sk == sound_kind) {
+            self.playing_sound.remove(index);
+        }
+
+        if let Some(audio_element) = js::dom::get_element_by_id::<HtmlMediaElement>(sound_kind.get_id()) {
+            if !audio_element.ended() {
+                audio_element.set_current_time(0.0);
+                let _ = audio_element.pause();
+            }
+            js::console_log!("pause {:?}", sound_kind.get_id());
+        }
+    }
+
+    fn pause_all(&mut self) {
+        while let Some(sk) = self.playing_sound.pop() {
+            self.pause(sk);
+        }
+    }
+
+    fn set_volume(&self, sound_kind: SoundKind, volume: f64) {
+        if let Some(audio_element) = js::dom::get_element_by_id::<HtmlMediaElement>(sound_kind.get_id()) {
+            audio_element.set_volume(volume);
         }
     }
 }
@@ -524,12 +635,12 @@ impl Resource {
         self.user_storage.as_mut().unwrap()
     }
 
-    fn get_sound(&mut self) -> &Sound {
+    fn get_sound(&mut self) -> &mut Sound {
         if self.sound.is_none() {
             self.sound = Some(Sound::default());
         }
 
-        self.sound.as_ref().unwrap()
+        self.sound.as_mut().unwrap()
     }
 
     pub fn onsen_status_manager<'a>() -> &'a OnsenStatusManager {
@@ -540,7 +651,7 @@ impl Resource {
         unsafe{ RESOURCE.get_user_storage() }
     }
 
-    pub fn sound<'a>() -> &'a Sound {
+    pub fn sound<'a>() -> &'a mut Sound {
         unsafe{ RESOURCE.get_sound() }
     }
 }
@@ -565,34 +676,67 @@ struct SelectPage {
 }
 impl SelectPage {
     fn new() -> Self {
-        Self {
+        let own = Self {
             stage_number: -1,
-            stage_level: 0,
+            stage_level: Resource::user_storage().init_stage_level,
             saved_onsen_data: OnsenStatus::get_init_onsen_status()
-        }
+        };
+        own.play_bgm();
+
+        own
+    }
+
+    fn play_bgm(&self) {
+        let bgm_kind = match self.stage_level+1 {
+            2 => SoundKind::BgmStageLevel2,
+            _ => SoundKind::BgmStageLevel1,
+        };
+
+        Resource::sound().set_volume(bgm_kind, 0.5);
+        Resource::sound().play_loop(bgm_kind);
     }
 
     const NOT_CLEAR_ONSEN_MARK: &'static str = "/resource/image/mark_offsen.png";
-    const CLEAR_ONSEN_MARK: &'static str = "/resource/image/mark_onsen.png";
+    const CLEAR_ONSEN_MARK: &'static str = "/resource/image/mark_orsen.png";
+    const ALL_CLEAR_ONSEN_MARK: &'static str = "/resource/image/mark_onsen.png";
 }
 impl PageTrait for SelectPage {
     fn view(&self, link: &ComponentLink<MainModel>) -> Html {
         // ステージ毎の簡易表示(クリア情報と遷移先)
         let mut select_container_item_content_html = vec![];
-        for stage_number in 0..4 {
-            let clear_mark = if OnsenStatus::get_onsen_status(self.stage_level, stage_number).is_cleared() {
-                Self::CLEAR_ONSEN_MARK
-            } else {
-                Self::NOT_CLEAR_ONSEN_MARK
-            };
+        let mut all_complete = true;
+        for &stage_level in &Resource::onsen_status_manager().level_list {
+            for stage_number in 0..4 {
+                let temp_status = OnsenStatus::get_onsen_status(stage_level, stage_number);
 
-            select_container_item_content_html.push(html!{
-                <div class={ format!("stage_{}", stage_number) }>
-                    <img class="is_clear_onsen_mark" src={ clear_mark } alt="onsen_mark"
-                        ontouchend=link.callback( move |event| Message::StageSelect(stage_number) )
-                    />
-                </div>
-            });
+                if all_complete {
+                    all_complete = temp_status.is_complete();
+                }
+                if stage_level != self.stage_level {
+                    continue
+                }
+
+                let clear_mark = if all_complete {
+                    Self::ALL_CLEAR_ONSEN_MARK
+                } else if temp_status.is_cleared() {
+                    Self::CLEAR_ONSEN_MARK
+                } else {
+                    Self::NOT_CLEAR_ONSEN_MARK
+                };
+
+                select_container_item_content_html.push(html!{
+                    <div class={ format!("stage_{}", stage_number) }>
+                        <img class="is_clear_onsen_mark" src={ clear_mark } alt="onsen_mark"
+                            ontouchend=link.callback( move |event| Message::StageSelect(stage_number) )
+                        />
+                    </div>
+                });
+            }
+        }
+
+        if all_complete && !OnsenStatus::is_show_popup() {
+            js::console_log!("all complete");
+            link.send_message(Message::AllComplete);
         }
 
         html!{
@@ -620,8 +764,6 @@ impl PageTrait for SelectPage {
 
         match message {
             Message::StageEnter => {
-                Resource::sound().play(SoundKind::StageEnter);
-    
                 return Message::ChangeToQuastionPage(
                     self.saved_onsen_data.key.clone()
                 );
@@ -655,6 +797,20 @@ impl PageTrait for SelectPage {
                 OnsenStatus::hide_popup();
                 self.stage_number = -1;
             },
+            Message::StageTweet | Message::StageYoutube => {
+                let mut temp_status = OnsenStatus::new(&self.saved_onsen_data.key);
+                temp_status.init_from_user_storage();
+                temp_status.use_hint_and_save();
+                Resource::user_storage().onsen_status.set_onsen_data(&self.saved_onsen_data.key, &temp_status);
+                js::console_log!("key = {}", self.saved_onsen_data.key);
+
+                Resource::user_storage().init_onsen_key = self.saved_onsen_data.key.to_string();
+                Resource::user_storage().save_data();
+            },
+            Message::AllComplete => {
+                js::console_log!("all complete");
+                return Message::ChangeToQuastionPage("complete".to_string());
+            },
             _ => (),
         };
 
@@ -672,38 +828,44 @@ struct QuastionPage {
     quastion: &'static OnsenStatus,
     now_status: OnsenStatus,
     cursor_image: Option<HtmlImageElement>,
+    first_page: bool,
+    opened_door: bool,
 }
 impl QuastionPage {
     const HINT_PARAM_NAME: &'static str = "hint";
+    const POPUP_PARAM_NAME: &'static str = "show_popup";
 
     fn new(name: &str) -> Self {
         let mut own = Self {
-            sen_op: sen::SenOpManager::new( vec![sen::SenOp::Off, sen::SenOp::On, sen::SenOp::Or, sen::SenOp::And, sen::SenOp::Not], Some(1) ),
+            sen_op: sen::SenOpManager::new( vec![sen::SenOp::Off, sen::SenOp::On, sen::SenOp::Or, sen::SenOp::And, sen::SenOp::Not], Some(0) ),
             quastion: &Resource::onsen_status_manager().onsen_status_list[name],
             now_status: OnsenStatus::new(name),
             cursor_image: None,
+            first_page: false,
+            opened_door: false,
         };
         own.load_quastion(name);
 
-        if let Some(_) = js::dom::get_param(Self::HINT_PARAM_NAME) {
-            if Resource::user_storage().onsen_status.onsen_status_list[&own.now_status.key].is_cleared() {
-                // 過去にクリアしていると初期化しない
-                own.now_status = Resource::user_storage().onsen_status.onsen_status_list[&own.now_status.key].clone();
+        if let Some(hint_value) = js::dom::get_param(Self::HINT_PARAM_NAME) {
+            if "off" == &hint_value {
+                own.now_status.use_hint_and_save();
+                
+                js::console_log!("hint off.");
+                js::popup_alert!("広告によるヒントがまだ使用できません。");
             } else {
-                // json から初期化
-                own.now_status.init();
-                own.now_status.sen.init();
-            }
-            own.now_status = own.now_status.set_use_hint(true);
+                own.now_status.use_hint_and_save();
 
-            Resource::user_storage().onsen_status.set_onsen_data(
-                &own.now_status.key,
-                &own.now_status
-            );
-            Resource::user_storage().save_data();
-            js::console_log!("hint on");
-            js::dom::redirect("/index.html");
+                js::console_log!("hint on");
+            }
+            js::dom::redirect(&format!("/index.html?{}=on", Self::POPUP_PARAM_NAME));
         }
+
+        own
+    }
+
+    fn new_from_localstorage() -> Self {
+        let mut own = Self::new(&Resource::user_storage().init_onsen_key);
+        own.first_page = true;
 
         own
     }
@@ -778,6 +940,7 @@ impl QuastionPage {
         if prev_sens != self.now_status.sen {
             // tutorial がついてると削除して非表示にする
             if let Some(tutorial_cursor) = js::dom::get_element_by_id::<HtmlElement>("tutorial_cursor") {
+                tutorial_cursor.class_list().remove_1("tutorial_senop_cursor").unwrap();
                 tutorial_cursor.class_list().remove_1("tutorial_move_cursor").unwrap();
             }
 
@@ -819,6 +982,10 @@ impl QuastionPage {
             return Message::None;
         }
 
+        self.stage_clear()
+    }
+
+    fn stage_clear(&mut self) -> Message {
         if self.sen_op.get_top() != sen::SenOp::Off {
             // ☆
             self.now_status.is_clear = true;
@@ -854,26 +1021,53 @@ impl QuastionPage {
         );
         Resource::user_storage().save_data();
 
-        // top なら SelectPage へ
+        // top なら、結果を表示せずに SelectPage へ
         if "top" == self.now_status.key {
             return Message::ChangeToSelectPage;
         }
 
         // 結果ポップアップの表示
         OnsenStatus::show_popup();
-        
+
         Message::None
+    }
+
+    fn set_tutorial_animation(&self) {
+        if let Some(tutorial_cursor) = js::dom::get_element_by_id::<HtmlElement>("tutorial_cursor") {
+            if !tutorial_cursor.class_list().contains("tutorial_senop_cursor") {
+                // tutorial.1: op の切り替え
+                tutorial_cursor.class_list().remove_1("tutorial_move_cursor").unwrap();
+                tutorial_cursor.class_list().add_1("tutorial_senop_cursor").unwrap();
+            } else {
+                // tutorial.2: 温泉マークへの移動
+                tutorial_cursor.class_list().add_1("tutorial_move_cursor").unwrap();
+            }
+        }
+    }
+
+    fn play_bgm(&self) {
+        let bgm_kind = match self.now_status.key.as_str() {
+            "top" => SoundKind::BgmStageTop,
+            _ => SoundKind::BgmStageDefault,
+        };
+
+        Resource::sound().set_volume(bgm_kind, 0.5);
+        Resource::sound().play_loop(bgm_kind);
     }
 }
 impl PageTrait for QuastionPage {
     fn view(&self, link: &ComponentLink<MainModel>) -> Html {
+        if !self.first_page && !self.opened_door {
+            link.send_message(Message::OpenDoor);
+        }
+        
         html! {
             <div class="top_container" id="grand_parent_node">
                 <div class="container_item_header">
                     /*{ "banner_area" }*/
                 </div>
                 <div class="container_item_title">
-                    <div id="title_text" class="on_font">
+                    <div id="title_text" class="normal_font">
                         <div>
                             <ruby>
                                 <div
@@ -903,6 +1097,11 @@ impl PageTrait for QuastionPage {
                 <div class="container_item_footer">
                     /*{ "banner_area" }*/
                 </div>
+                <img id="left_door" src="/resource/image/left_door.png" alt="left_door"
+                    ontouchend=link.callback(|event| Message::OpenDoor)
+                    onanimationend=link.callback(|event| Message::OpenedDoor) />
+                <img id="right_door" src="/resource/image/right_door.png" alt="right_door"
+                    ontouchend=link.callback(|event| Message::OpenDoor) />
             </div>
         }
     }
@@ -938,7 +1137,7 @@ impl PageTrait for QuastionPage {
             },
             Message::StageEnter => {
                 OnsenStatus::hide_popup();
-
+                
                 return Message::ChangeToQuastionPage(
                     self.now_status.key.clone()
                 );
@@ -954,28 +1153,53 @@ impl PageTrait for QuastionPage {
                 );
             },
             Message::TouchStartBackSen => {
-                if let Some(title_text) = js::dom::get_element_by_id::<HtmlElement>("title_text") {
-                    // ON の幅だと画面の横幅が貫通するので変える
-                    title_text.class_list().remove_1("on_font").unwrap();
-                    title_text.class_list().add_1("normal_font").unwrap();
-                }
-
                 self.sen_op.prev()
             },
             Message::TouchStartFrontSen => {
-                if let Some(title_text) = js::dom::get_element_by_id::<HtmlElement>("title_text") {
-                    // ON の幅だと画面の横幅が貫通するので変える
-                    title_text.class_list().remove_1("on_font").unwrap();
-                    title_text.class_list().add_1("normal_font").unwrap();
-                }
-
-                self.sen_op.next()
-            },
+                self.sen_op.next();
+                self.set_tutorial_animation();
+        },
             Message::BlinkAnimationEnd => {
                 if let Some(rb_under) = js::dom::get_element_by_id::<HtmlElement>("rb_under") {
                     rb_under.class_list().remove_1("blink_new_ruby").unwrap();
                 }
-            }
+            },
+            Message::OpenDoor => {
+                if self.opened_door {
+                    return Message::None;
+                }
+                self.opened_door = true;
+                self.first_page = false;
+
+                let mut is_retry = false;
+
+                if let Some(left_door) = js::dom::get_element_by_id::<HtmlImageElement>("left_door") {
+                    if 0 == left_door.class_list().length() {
+                        left_door.class_list().add_1("open_left_door").unwrap();
+                    } else {
+                        is_retry = true;
+                    }
+                }
+                if let Some(right_door) = js::dom::get_element_by_id::<HtmlImageElement>("right_door") {
+                    right_door.class_list().add_1("open_right_door").unwrap();
+                }
+
+                if is_retry {
+                    js::console_log!("retry. opened door");
+                    self.play_bgm();
+                } else {
+                    js::console_log!("open door");
+                    Resource::sound().play(SoundKind::StageEnter);
+                }
+            },
+            Message::OpenedDoor => {
+                self.play_bgm();
+            },
+            Message::StageTweet | Message::StageYoutube => {
+                Resource::user_storage().init_onsen_key = self.now_status.key.to_string();
+                Resource::user_storage().save_data();
+                self.now_status.use_hint_and_save();
+            },
             _ => (),
         }
 
@@ -1002,16 +1226,16 @@ impl PageTrait for QuastionPage {
         });
 
         if first_render {
-            if self.now_status.use_hint {
-                OnsenStatus::show_popup();
+            if self.first_page && self.now_status.use_hint {
+                if let Some(_) = js::dom::get_param(Self::POPUP_PARAM_NAME) {
+                    OnsenStatus::show_popup();
+                }
             }
 
             // 初回 かつ 未クリア時 で 最初の方のステージ でのみチュートリアル用のカーソルアニメーションを表示
             if !self.now_status.is_cleared() {
-                if ["top"].iter().any(|&stage_key| stage_key == self.now_status.key) {
-                    if let Some(tutorial_cursor) = js::dom::get_element_by_id::<HtmlElement>("tutorial_cursor") {
-                        tutorial_cursor.class_list().add_1("tutorial_move_cursor").unwrap();
-                    }
+                if "top" == self.now_status.key {
+                    self.set_tutorial_animation();
                 }
             }
         }
@@ -1024,24 +1248,35 @@ struct PageManager {
 impl PageManager {
     fn new() -> Self {
         Self {
-            page: Box::new(QuastionPage::new(&Resource::user_storage().init_onsen_key)),
+            page: Box::new(QuastionPage::new_from_localstorage()),
         }
     }
 
     fn update(&mut self, message: Message) -> ShouldRender {
-        match self.page.as_mut().update(message) {
+        match self.page.as_mut().update(message.clone()) {
             Message::ChangeToQuastionPage(name) => {
                 Resource::user_storage().init_onsen_key = name;
                 Resource::user_storage().save_data();
+                Resource::sound().pause_all();
 
                 self.page = Box::new(QuastionPage::new(&Resource::user_storage().init_onsen_key));
             },
             Message::ChangeToSelectPage => {
+                Resource::sound().pause_all();
+
                 self.page = Box::new(SelectPage::new());
             },
             _ => (),
-        };
-                
+        }
+
+        match message {
+            Message::StageBack | Message::StageClose | Message::StageEnter | Message::StageNext
+            | Message::StageSelect(_) | Message::TouchStartBackSen | Message::TouchStartFrontSen => {
+                Resource::sound().play(SoundKind::ButtonUp);
+            },
+            _ => (),
+        }
+        
         true
     }
 

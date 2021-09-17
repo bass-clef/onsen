@@ -163,8 +163,9 @@ impl SenManager {
     /// 現在の sen_list を 2 進数へ変換して、つなげて i32 として返す
     pub fn get_number(&self) -> i32 {
         let binary_string = self.sen_list.as_slice().iter().map(|sen| format!("{:02b}", (*sen).bit) );
+        let binary_string = binary_string.collect::<Vec<String>>().join("");
 
-        isize::from_str_radix(&binary_string.collect::<Vec<String>>().join(""), 2).unwrap() as i32
+        isize::from_str_radix(&binary_string, 2).unwrap() as i32
     }
 
     /// sen_list を for_each で回す
